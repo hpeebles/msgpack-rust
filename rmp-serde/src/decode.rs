@@ -7,7 +7,7 @@ use std::fmt::{self, Display, Formatter};
 use std::io::{self, Cursor, ErrorKind, Read};
 use std::marker::PhantomData;
 use std::num::TryFromIntError;
-use std::str::{self, Utf8Error};
+use std::str::{self, FromStr, Utf8Error};
 
 use byteorder::{self, ReadBytesExt};
 
@@ -315,7 +315,7 @@ impl<'de, R: ReadSlice<'de>, C: SerializerConfig> Deserializer<R, C> {
 }
 
 #[inline(never)]
-fn read_i128_marker<'de, R: ReadSlice<'de>>(marker: Marker, rd: &mut R) -> Result<i128, Error> {
+fn read_i128_marker<'de, R: ReadSlice<'de>>(marker: Marker, rd: &mut R, is_signed_ty: bool) -> Result<i128, Error> {
     Ok(match marker {
         Marker::FixPos(val) => val.into(),
         Marker::FixNeg(val) => val.into(),
@@ -334,6 +334,16 @@ fn read_i128_marker<'de, R: ReadSlice<'de>>(marker: Marker, rd: &mut R) -> Resul
         Marker::FixArray(len) => {
             read_128_buf(rd, len)?
         },
+        Marker::FixStr(len) => {
+            match u32::try_from(len) {
+                Ok(len_u32) => read_128_str(rd, len_u32, is_signed_ty)?,
+                Err(_) => return Err(parse_128_error(is_signed_ty))
+            }
+        }
+        Marker::Str8 => {
+            let len = read_u8(rd).map(u32::from)?;
+            read_128_str(rd, len, is_signed_ty)?
+        }
         marker => return Err(Error::TypeMismatch(marker)),
     })
 }
@@ -347,6 +357,27 @@ fn read_128_buf<'de, R: ReadSlice<'de>>(rd: &mut R, len: u8) -> Result<i128, Err
         Reference::Copied(buf) => buf,
     };
     Ok(i128::from_be_bytes(buf.try_into().map_err(|_| Error::LengthMismatch(16))?))
+}
+
+fn read_128_str<'de, R: ReadSlice<'de>>(rd: &mut R, len: u32, is_signed_ty: bool) -> Result<i128, Error> {
+    let buf = match read_bin_data(rd, len)? {
+        Reference::Borrowed(buf) => buf,
+        Reference::Copied(buf) => buf,
+    };
+    match str::from_utf8(buf) {
+        Ok(s) => {
+            if is_signed_ty {
+                i128::from_str(s).map_err(|_| parse_128_error(is_signed_ty))
+            } else {
+                u128::from_str(s).map(|v| v as i128).map_err(|_| parse_128_error(is_signed_ty))
+            }
+        },
+        Err(err) => Err(Error::Utf8Error(err)),
+    }
+}
+
+fn parse_128_error(is_signed_ty: bool) -> Error {
+    Error::Uncategorized(format!("FailedToParseStringAs{}128", if is_signed_ty { 'I' } else { 'U' }))
 }
 
 fn read_str_data<'de, V, R>(rd: &mut R, len: u32, visitor: V) -> Result<V::Value, Error>
@@ -721,7 +752,7 @@ impl<'de, 'a, R: ReadSlice<'de>, C: SerializerConfig> serde::Deserializer<'de> f
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i128(read_i128_marker(self.take_or_read_marker()?, &mut self.rd)?)
+        visitor.visit_i128(read_i128_marker(self.take_or_read_marker()?, &mut self.rd, true)?)
     }
 
     #[inline]
@@ -729,7 +760,7 @@ impl<'de, 'a, R: ReadSlice<'de>, C: SerializerConfig> serde::Deserializer<'de> f
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u128(read_i128_marker(self.take_or_read_marker()?, &mut self.rd)? as u128)
+        visitor.visit_u128(read_i128_marker(self.take_or_read_marker()?, &mut self.rd, false)? as u128)
     }
 
     #[inline]

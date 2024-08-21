@@ -739,6 +739,12 @@ fn assert_roundtrips<T: PartialEq + std::fmt::Debug + Serialize + for<'a> Deseri
         |s| s.with_bytes(BytesMode::ForceAll),
         |d| d,
     );
+    assert_roundtrips_config(
+        &val,
+        ".with_large_ints_as_strings(true)",
+        |s| s.with_large_ints_as_strings(),
+        |d| d,
+    );
 }
 
 #[cfg(test)]

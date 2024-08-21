@@ -266,7 +266,7 @@ impl<W: Write, C> Serializer<W, C> {
     /// as a sequence of variable-size integers.
     ///
     /// This reduces overhead of binary data, but it may break
-    /// decodnig of some Serde types that happen to contain `[u8]`s,
+    /// decoding of some Serde types that happen to contain `[u8]`s,
     /// but don't implement Serde's `visit_bytes`.
     ///
     /// ```rust
@@ -279,6 +279,14 @@ impl<W: Write, C> Serializer<W, C> {
     #[inline]
     pub fn with_bytes(mut self, mode: BytesMode) -> Serializer<W, C> {
         self.config.bytes = mode;
+        self
+    }
+
+    /// Encodes i128 and u128 values which don't fit within i64/u64
+    /// as strings rather than as byte arrays.
+    #[inline]
+    pub fn with_large_ints_as_strings(mut self) -> Serializer<W, C> {
+        self.config.large_ints_as_strings = true;
         self
     }
 }
@@ -606,6 +614,8 @@ where
     fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
         if let Ok(v_i64) = i64::try_from(v) {
             encode::write_sint(&mut self.wr, v_i64)?;
+        } else if self.config.large_ints_as_strings {
+            encode::write_str(&mut self.wr, &v.to_string())?;
         } else {
             self.serialize_bytes(&v.to_be_bytes())?;
         }
@@ -632,6 +642,8 @@ where
     fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
         if let Ok(v_u64) = u64::try_from(v) {
             encode::write_uint(&mut self.wr, v_u64)?;
+        } else if self.config.large_ints_as_strings {
+            encode::write_str(&mut self.wr, &v.to_string())?;
         } else {
             self.serialize_bytes(&v.to_be_bytes())?;
         }
