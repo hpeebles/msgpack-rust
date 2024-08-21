@@ -23,6 +23,7 @@ pub(crate) mod sealed {
         /// String struct fields
         fn is_named(&self) -> bool;
         fn bytes(&self) -> BytesMode;
+        fn large_ints_as_strings(&self) -> bool;
     }
 }
 
@@ -31,6 +32,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) is_human_readable: bool,
     pub(crate) is_named: bool,
     pub(crate) bytes: BytesMode,
+    pub(crate) large_ints_as_strings: bool,
 }
 
 /// When to encode `[u8]` as `bytes` rather than a sequence
@@ -62,6 +64,7 @@ impl RuntimeConfig {
             is_human_readable: other.is_human_readable(),
             is_named: other.is_named(),
             bytes: other.bytes(),
+            large_ints_as_strings: other.large_ints_as_strings(),
         }
     }
 }
@@ -80,6 +83,11 @@ impl sealed::SerializerConfig for RuntimeConfig {
     #[inline]
     fn bytes(&self) -> BytesMode {
         self.bytes
+    }
+
+    #[inline]
+    fn large_ints_as_strings(&self) -> bool {
+        self.large_ints_as_strings
     }
 }
 
@@ -108,6 +116,11 @@ impl sealed::SerializerConfig for DefaultConfig {
     #[inline(always)]
     fn bytes(&self) -> BytesMode {
         BytesMode::default()
+    }
+
+    #[inline]
+    fn large_ints_as_strings(&self) -> bool {
+        false
     }
 }
 
@@ -146,6 +159,11 @@ where
     fn bytes(&self) -> BytesMode {
         self.0.bytes()
     }
+
+    #[inline(always)]
+    fn large_ints_as_strings(&self) -> bool {
+        self.0.large_ints_as_strings()
+    }
 }
 
 /// Config wrapper that overrides struct serlization by packing as a tuple without field
@@ -177,6 +195,11 @@ where
 
     fn bytes(&self) -> BytesMode {
         self.0.bytes()
+    }
+
+    #[inline(always)]
+    fn large_ints_as_strings(&self) -> bool {
+        self.0.large_ints_as_strings()
     }
 }
 
@@ -210,6 +233,11 @@ where
     fn bytes(&self) -> BytesMode {
         self.0.bytes()
     }
+
+    #[inline(always)]
+    fn large_ints_as_strings(&self) -> bool {
+        self.0.large_ints_as_strings()
+    }
 }
 
 /// Config wrapper that overrides `Serializer::is_human_readable` and
@@ -241,5 +269,10 @@ where
 
     fn bytes(&self) -> BytesMode {
         self.0.bytes()
+    }
+
+    #[inline(always)]
+    fn large_ints_as_strings(&self) -> bool {
+        self.0.large_ints_as_strings()
     }
 }
