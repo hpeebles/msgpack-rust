@@ -537,25 +537,61 @@ impl<'de, 'a, R: ReadSlice<'de> + 'a, C: SerializerConfig> de::Deserializer<'de>
     }
 }
 
+/// A scalar read by `read_num`, which is passed to the visitor method of the same type
+enum Num {
+    Unit,
+    Bool(bool),
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
+
+/// Reads the scalar `marker` starts. This is separate from `any_num`, which is generic over the
+/// visitor, so that the reading is compiled once per reader rather than once per visitor.
+#[inline(never)]
+fn read_num<'de, R: ReadSlice<'de>>(rd: &mut R, marker: Marker) -> Result<Num, Error> {
+    Ok(match marker {
+        Marker::Null => Num::Unit,
+        Marker::True |
+        Marker::False => Num::Bool(marker == Marker::True),
+        Marker::FixPos(val) => Num::U8(val),
+        Marker::FixNeg(val) => Num::I8(val),
+        Marker::U8 => Num::U8(rd.read_data_u8()?),
+        Marker::U16 => Num::U16(rd.read_data_u16()?),
+        Marker::U32 => Num::U32(rd.read_data_u32()?),
+        Marker::U64 => Num::U64(rd.read_data_u64()?),
+        Marker::I8 => Num::I8(rd.read_data_i8()?),
+        Marker::I16 => Num::I16(rd.read_data_i16()?),
+        Marker::I32 => Num::I32(rd.read_data_i32()?),
+        Marker::I64 => Num::I64(rd.read_data_i64()?),
+        Marker::F32 => Num::F32(rd.read_data_f32()?),
+        Marker::F64 => Num::F64(rd.read_data_f64()?),
+        other_marker => return Err(Error::TypeMismatch(other_marker)),
+    })
+}
+
 #[inline(never)]
 fn any_num<'de, R: ReadSlice<'de>, V: Visitor<'de>>(rd: &mut R, visitor: V, marker: Marker) -> Result<V::Value, Error> {
-    match marker {
-        Marker::Null => visitor.visit_unit(),
-        Marker::True |
-        Marker::False => visitor.visit_bool(marker == Marker::True),
-        Marker::FixPos(val) => visitor.visit_u8(val),
-        Marker::FixNeg(val) => visitor.visit_i8(val),
-        Marker::U8 => visitor.visit_u8(rd.read_data_u8()?),
-        Marker::U16 => visitor.visit_u16(rd.read_data_u16()?),
-        Marker::U32 => visitor.visit_u32(rd.read_data_u32()?),
-        Marker::U64 => visitor.visit_u64(rd.read_data_u64()?),
-        Marker::I8 => visitor.visit_i8(rd.read_data_i8()?),
-        Marker::I16 => visitor.visit_i16(rd.read_data_i16()?),
-        Marker::I32 => visitor.visit_i32(rd.read_data_i32()?),
-        Marker::I64 => visitor.visit_i64(rd.read_data_i64()?),
-        Marker::F32 => visitor.visit_f32(rd.read_data_f32()?),
-        Marker::F64 => visitor.visit_f64(rd.read_data_f64()?),
-        other_marker => Err(Error::TypeMismatch(other_marker)),
+    match read_num(rd, marker)? {
+        Num::Unit => visitor.visit_unit(),
+        Num::Bool(val) => visitor.visit_bool(val),
+        Num::U8(val) => visitor.visit_u8(val),
+        Num::U16(val) => visitor.visit_u16(val),
+        Num::U32(val) => visitor.visit_u32(val),
+        Num::U64(val) => visitor.visit_u64(val),
+        Num::I8(val) => visitor.visit_i8(val),
+        Num::I16(val) => visitor.visit_i16(val),
+        Num::I32(val) => visitor.visit_i32(val),
+        Num::I64(val) => visitor.visit_i64(val),
+        Num::F32(val) => visitor.visit_f32(val),
+        Num::F64(val) => visitor.visit_f64(val),
     }
 }
 
