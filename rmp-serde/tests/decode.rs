@@ -567,3 +567,43 @@ fn fail_depth_limit() {
         other => panic!("unexpected result: {other:?}"),
     }
 }
+
+// `ReadReader` reads a string or binary of up to 64KB into a buffer of exactly its length, and a longer
+// one into a growing buffer. Both paths reuse the same buffer.
+
+#[test]
+fn pass_short_values_after_a_long_binary_through_a_reader() {
+    let long = serde_bytes::ByteBuf::from(vec![7u8; 100_000]);
+    let short = serde_bytes::ByteBuf::from(vec![1u8, 2]);
+    let buf = rmp_serde::to_vec(&(&long, "short", &short)).unwrap();
+
+    let actual: (serde_bytes::ByteBuf, String, serde_bytes::ByteBuf) =
+        rmp_serde::from_read(Cursor::new(&buf[..])).unwrap();
+
+    assert_eq!((long, "short".to_string(), short), actual);
+}
+
+#[test]
+fn pass_strings_either_side_of_the_preallocation_limit_through_a_reader() {
+    for len in [0, 65_536, 65_537] {
+        let value = "x".repeat(len);
+        let buf = rmp_serde::to_vec(&value).unwrap();
+
+        let actual: String = rmp_serde::from_read(Cursor::new(&buf[..])).unwrap();
+
+        assert_eq!(value, actual);
+    }
+}
+
+#[test]
+fn fail_truncated_strings_either_side_of_the_preallocation_limit_through_a_reader() {
+    for len in [1, 65_536, 65_537] {
+        let buf = rmp_serde::to_vec(&"x".repeat(len)).unwrap();
+        let truncated = &buf[..buf.len() - 1];
+
+        match rmp_serde::from_read::<_, String>(Cursor::new(truncated)) {
+            Err(Error::InvalidDataRead(err)) => assert_eq!(std::io::ErrorKind::UnexpectedEof, err.kind()),
+            other => panic!("unexpected result for a string of {len} bytes: {other:?}"),
+        }
+    }
+}

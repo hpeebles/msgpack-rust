@@ -1108,13 +1108,25 @@ impl<R: Read> ReadReader<R> {
     }
 }
 
+// A string or binary of up to this many bytes is read into a buffer resized to exactly its length.
+// `read_to_end` isn't used for these: from Rust 1.99, reading through `Take` zero-fills the rest of
+// the up-to-8KB chunk `read_to_end` offers it, so once any value has grown the reused buffer past
+// 8KB, every short read zeroes 8KB, which is costly on wasm. A longer value is still read into a
+// growing buffer, so that a corrupt length can't make it allocate a huge buffer up front.
+const MAX_PREALLOCATED_LEN: usize = 64 * 1024;
+
 impl<'de, R: Read> ReadSlice<'de> for ReadReader<R> {
     #[inline]
     fn read_slice<'a>(&'a mut self, len: usize) -> Result<Reference<'de, 'a, [u8]>, io::Error> {
         self.buf.clear();
-        let read = self.rd.by_ref().take(len as u64).read_to_end(&mut self.buf)?;
-        if read != len {
-            return Err(io::ErrorKind::UnexpectedEof.into());
+        if len <= MAX_PREALLOCATED_LEN {
+            self.buf.resize(len, 0);
+            self.rd.read_exact(&mut self.buf)?;
+        } else {
+            let read = self.rd.by_ref().take(len as u64).read_to_end(&mut self.buf)?;
+            if read != len {
+                return Err(io::ErrorKind::UnexpectedEof.into());
+            }
         }
 
         Ok(Reference::Copied(&self.buf[..]))
